@@ -373,6 +373,7 @@ export default function DashboardPage({ view = 'workbench' }: DashboardPageProps
     lastRefreshedAt,
     refresh,
     updateGreetingJob,
+    updateJobStatus,
     startTask,
     stopTask,
   } = useDashboard(view)
@@ -411,7 +412,7 @@ export default function DashboardPage({ view = 'workbench' }: DashboardPageProps
     [workbench.pending_confirmation, confirmedDeliveryIds]
   )
   const debouncedTodayQuery = useDebouncedValue(todayFilters.query, 250)
-  const activeTodayFilterCount = Object.values(todayFilters).filter(value => value !== '').length
+  const activeTodayFilterCount = Object.values(todayFilters).filter(value => Array.isArray(value) ? value.length > 0 : value !== '').length
   const effectiveTodayFilters = useMemo(
     () => ({ ...todayFilters, query: debouncedTodayQuery }),
     [todayFilters, debouncedTodayQuery]
@@ -769,7 +770,7 @@ export default function DashboardPage({ view = 'workbench' }: DashboardPageProps
   }
 
   if (view === 'jobs') {
-    return <JobsPoolView />
+    return <JobsPoolView updateJobStatus={updateJobStatus} />
   }
 
   if (view === 'monitor') {
@@ -1599,7 +1600,7 @@ function InfoBlock({ label, value }: { label: string; value: string }) {
   )
 }
 
-function JobsPoolView() {
+function JobsPoolView({ updateJobStatus }: { updateJobStatus: (jobId: string, status: string) => Promise<void> }) {
   const pageSize = 15
   const [page, setPage] = useState(0)
   const [filters, setFilters] = useState<JobFilters>({ ...EMPTY_JOB_FILTERS })
@@ -1726,6 +1727,17 @@ function JobsPoolView() {
     }
   }
 
+  const changeJobStatus = async (job: Job, status: string) => {
+    if (!window.confirm(`确认将“${job.company} ${job.title}”状态改为“${getStatusLabel(status)}”吗？`)) return
+    try {
+      await updateJobStatus(job.id, status)
+      refreshJobs()
+      setNotice('岗位状态已更新。')
+    } catch (cause) {
+      setNotice(cause instanceof Error ? cause.message : '修改岗位状态失败')
+    }
+  }
+
   const deliverSelectedJobs = async () => {
     if (!selectedIds.length) return
     const count = selectedIds.length
@@ -1800,6 +1812,8 @@ function JobsPoolView() {
             status: filters.status,
             created_within: filters.createdWithin,
             source_platform: filters.sourcePlatform,
+            education: filters.education,
+            recruitment_type: filters.recruitmentType,
           } : {},
         }),
       })
@@ -1962,6 +1976,7 @@ function JobsPoolView() {
         onToggleSelected={toggleSelected}
         onSoftDelete={job => void softDelete([job.id])}
         onMarkManuallySent={job => void markManuallySent(job)}
+        onStatusChange={changeJobStatus}
         loading={loading}
         sortBy={sortBy}
         sortOrder={sortOrder}
